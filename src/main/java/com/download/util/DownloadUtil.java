@@ -55,7 +55,7 @@ public class DownloadUtil {
     CountDownLatch countDownLatch = null;
 
     // 记录将要写入文件的字节信息
-    Map<Integer, byte[]> downloadResultMap = new ConcurrentHashMap<Integer, byte[]>();
+    Map<Integer, HashMap<String, Object>> downloadResultMap = new ConcurrentHashMap<Integer, HashMap<String, Object>>();
 
     // 用于计算进度
     private AtomicInteger completedCount = null;
@@ -148,6 +148,7 @@ public class DownloadUtil {
             headerFields.forEach((k, v) -> {
                 sb.append("\t").append(k).append(": ").append(v).append(";\n");
             });
+
             System.out.println(sb.toString());
 
             if (this.segmentLength == null || this.segmentLength < 0) {
@@ -182,6 +183,7 @@ public class DownloadUtil {
      * @throws IOException
      */
     private void outputToFile(String contentType) throws IOException {
+        System.out.println("\n开始写入本地文件");
 
         if (!flag) {
             System.out.println("下载失败，不能生成");
@@ -194,8 +196,9 @@ public class DownloadUtil {
         try (OutputStream os = new FileOutputStream(new File(path))) {
 
             for (int i = 0; i < segments; i++) {
-                byte[] b = downloadResultMap.get(i);
-                os.write(b);
+                byte[] b = (byte[]) downloadResultMap.get(i).get("data");
+                int dataLength = (int) downloadResultMap.get(i).get("dataLength");
+                os.write(b, 0, dataLength);
             }
         } catch (IOException e) {
             e.printStackTrace();
@@ -250,19 +253,59 @@ public class DownloadUtil {
             this.downloadDataIS = connection.getInputStream();
         }
 
-        public void run() {
-            byte[] b = new byte[segmentLength];
+        /**
+         * 从下载的流中读取数据
+         *
+         * @return
+         */
+        private HashMap<String, Object> readFromStream() {
             try {
-                if (downloadDataIS.read(b) != -1) {
-                    downloadResultMap.put(this.segmentIndex, b);
-                    System.out.printf("已完成进度的 %.2f%%\n", (100.0 * completedCount.incrementAndGet() / this.segments));
+                byte[] tempByte = new byte[1024];
+                byte[] b = new byte[segmentLength];
+
+                int totalDataLength = 0;
+                int tempIndex = 0;
+
+                // FIXME 此处两层循环有待改进
+                for (int dataLength = 0; (dataLength = downloadDataIS.read(tempByte)) != -1; ) {
+                    for (int i = 0; i < dataLength; i++) {
+                        b[tempIndex] = tempByte[i];
+                        tempIndex++;
+                    }
+                    totalDataLength += dataLength;
                 }
+
+                HashMap<String, Object> tempMap = new HashMap<String, Object>();
+                tempMap.put("data", b);
+                tempMap.put("dataLength", totalDataLength);
+
+                displayProcess();
+
+                return tempMap;
             } catch (Exception e) {
                 flag = false;
                 e.printStackTrace();
+                return null;
             } finally {
                 countDownLatch.countDown();
             }
+        }
+
+        /**
+         * 显示下载进度
+         * FIXME 此处不放心加了 synchronized
+         */
+        private synchronized void displayProcess() {
+            for (int i = 0; i < 13; i++) {
+                System.out.printf("\b");
+            }
+            double processValue = (100.0 * completedCount.incrementAndGet() / this.segments);
+            String format = processValue > 10 ? "已完成进度的 %.2f%%" : "已完成进度的 0%.2f%%";
+            System.out.printf(format, processValue);
+        }
+
+        public void run() {
+            downloadResultMap.put(this.segmentIndex, readFromStream());
         }
     }
 }
