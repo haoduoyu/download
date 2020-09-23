@@ -163,7 +163,7 @@ public class DownloadUtil {
             countDownLatch = new CountDownLatch(segments);
 
             for (int segmentIndex = 0; segmentIndex < segments; segmentIndex++) {
-                threadPool.execute(new DownloadThread(url, segments, segmentIndex, fileLength));
+                threadPool.execute(new DownloadThread(url, segments, segmentIndex, fileLength, connection.getContentType()));
             }
 
             countDownLatch.await();
@@ -217,13 +217,13 @@ public class DownloadUtil {
         // 请求到的片段流
         private InputStream downloadDataIS;
 
-        public DownloadThread(URL url, int segments, int segmentIndex, int fileLength) {
+        public DownloadThread(URL url, int segments, int segmentIndex, int fileLength, String contentType) {
             this.segmentIndex = segmentIndex;
             this.segments = segments;
             this.fileLength = fileLength;
 
             try {
-                initConnection(url);
+                initConnection(url, contentType);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -235,9 +235,9 @@ public class DownloadUtil {
          * @param url
          * @throws IOException
          */
-        private void initConnection(URL url) throws IOException {
+        private void initConnection(URL url, String contentType) throws IOException {
             URLConnection connection = url.openConnection();
-            connection.setRequestProperty("Content-Type", "application/octet-stream");
+            connection.setRequestProperty("Content-Type", contentType);
             connection.setDoOutput(true);
             connection.setDoInput(true);
             connection.setRequestProperty("Range", "bytes=" + (segmentIndex * segmentLength) + "-" +
